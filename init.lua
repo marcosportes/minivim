@@ -5,8 +5,8 @@
 -- ========================================
 
 -- Basic settings
-vim.opt.number = true                    -- Line numbers
-vim.opt.relativenumber = true            -- Relative line numbers
+vim.opt.number = true                    -- Line numbers (absolute)
+vim.opt.relativenumber = false           -- Disable relative line numbers
 vim.opt.expandtab = true                 -- Use spaces instead of tabs
 vim.opt.shiftwidth = 4                   -- Indent with 4 spaces
 vim.opt.tabstop = 4                      -- Tab = 4 spaces
@@ -34,6 +34,17 @@ vim.opt.showmode = false                 -- Don't show mode (we have statusline)
 vim.opt.laststatus = 2                   -- Always show statusline
 vim.opt.ruler = true                     -- Show cursor position
 vim.opt.showcmd = true                   -- Show partial commands
+
+-- Performance improvements
+vim.opt.lazyredraw = true                -- Don't redraw during macros
+vim.opt.synmaxcol = 240                  -- Limit syntax highlighting column
+
+-- Completion settings
+vim.opt.completeopt = "menu,menuone,noselect"  -- Better completion experience
+vim.opt.pumheight = 10                   -- Popup menu height
+
+-- Diff mode improvements
+vim.opt.diffopt = "internal,filler,closeoff,vertical,linematch:60"
 
 -- Leader key
 vim.g.mapleader = " "
@@ -128,15 +139,53 @@ vim.cmd([[
 -- Custom statusline with readonly indicator
 vim.opt.statusline = [[%#StatusLine# %f %m %{&readonly?'[READONLY]':''}%=%y  %l:%c  %p%% ]]
 
--- Winbar (top bar) for readonly indicator
-vim.opt.winbar = [[%{&readonly?'[READONLY - Press :q! to quit without saving]':''}]]
+-- Winbar with breadcrumbs and readonly indicator
+_G.minivim_saved = false
+
+_G.minivim_get_winbar = function()
+  if _G.minivim_saved then
+    return '%#DiffAdd# ✓ FILE SAVED - Press <Space>q to quit %*'
+  elseif vim.bo.readonly then
+    return '%#WinBarRO# [READONLY - Press :q! to quit without saving] %*'
+  else
+    -- Show file path and LSP context if available
+    local filepath = vim.fn.expand('%:~:.')
+    if filepath == '' then filepath = '[No Name]' end
+    return '%#WinBar# ' .. filepath .. ' %*'
+  end
+end
+
+vim.opt.winbar = '%{%v:lua.minivim_get_winbar()%}'
 
 -- Highlight for readonly indicator (statusline and winbar)
 vim.cmd([[
   hi StatusLineRO guifg=#fb4934 guibg=#3c3836 gui=bold
   hi WinBarRO guifg=#282828 guibg=#fb4934 gui=bold
-  au BufEnter * if &readonly | hi StatusLine guifg=#fb4934 guibg=#3c3836 gui=bold | hi WinBar guifg=#282828 guibg=#fb4934 gui=bold | else | hi StatusLine guifg=#ebdbb2 guibg=#504945 gui=bold | hi WinBar guifg=#ebdbb2 guibg=#282828 | endif
+  hi WinBarRODim guifg=#282828 guibg=#cc241d gui=bold
+  hi WinBar guifg=#ebdbb2 guibg=#282828
+  hi DiffAdd guifg=#282828 guibg=#b8bb26 gui=bold
+  au BufEnter,WinEnter * if &readonly | hi StatusLine guifg=#fb4934 guibg=#3c3836 gui=bold | hi WinBar guifg=#282828 guibg=#fb4934 gui=bold | else | hi StatusLine guifg=#ebdbb2 guibg=#504945 gui=bold | hi WinBar guifg=#ebdbb2 guibg=#282828 | endif
 ]])
+
+-- Blinking effect for readonly winbar
+_G.minivim_readonly_blink = false
+local readonly_timer = vim.loop.new_timer()
+readonly_timer:start(0, 500, vim.schedule_wrap(function()
+  -- Only blink if current buffer is readonly
+  if vim.bo.readonly then
+    _G.minivim_readonly_blink = not _G.minivim_readonly_blink
+    if _G.minivim_readonly_blink then
+      vim.cmd("hi WinBarRO guifg=#282828 guibg=#cc241d gui=bold")
+    else
+      vim.cmd("hi WinBarRO guifg=#282828 guibg=#fb4934 gui=bold")
+    end
+    vim.cmd("redraw")
+  end
+end))
+
+-- Helper functions for autocommands
+local augroup = vim.api.nvim_create_augroup
+local autocmd = vim.api.nvim_create_autocmd
 
 -- Essential keymaps
 local keymap = vim.keymap.set
@@ -177,7 +226,30 @@ keymap("n", "<Esc>", ":nohlsearch<CR>", { desc = "Clear highlight" })
 
 -- Save and quit
 keymap("n", "<leader>w", ":w<CR>", { desc = "Save" })
-keymap("n", "<leader>s", ":wq!<CR>", { desc = "Save and quit (force)" })
+
+-- Smart save with persistent visual feedback
+keymap("n", "<leader>s", function()
+  if vim.bo.readonly then
+    vim.notify("✗ File is readonly! Use :q! to quit", vim.log.levels.WARN)
+    return
+  end
+  vim.cmd("write")
+  _G.minivim_saved = true
+  -- Force winbar update
+  vim.cmd("redraw")
+end, { desc = "Save with feedback" })
+
+-- Clear save feedback when user starts editing again
+autocmd({ "InsertEnter", "TextChanged", "TextChangedI" }, {
+  group = augroup("ClearSaveFlag", { clear = true }),
+  callback = function()
+    if _G.minivim_saved then
+      _G.minivim_saved = false
+      vim.cmd("redraw")
+    end
+  end,
+})
+
 keymap("n", "<leader>q", ":q!<CR>", { desc = "Quit without saving (force)" })
 keymap("n", "<leader>Q", ":qa!<CR>", { desc = "Quit all without saving (force)" })
 
@@ -198,10 +270,40 @@ vim.api.nvim_create_user_command("Config", function()
   vim.cmd("edit /etc/minivim/init.lua")
 end, { desc = "Edit Minivim configuration" })
 
--- Useful autocommands
-local augroup = vim.api.nvim_create_augroup
-local autocmd = vim.api.nvim_create_autocmd
+-- Jump to error from log files (format: file:line or file:line:col)
+vim.api.nvim_create_user_command("JumpToError", function()
+  local line = vim.fn.getline(".")
+  local match = vim.fn.matchlist(line, [[\v([^:]+):(\d+):?(\d*)]])
+  if #match > 0 then
+    local file, lnum, col = match[2], tonumber(match[3]), tonumber(match[4]) or 1
+    vim.cmd("edit " .. file)
+    vim.fn.cursor(lnum, col)
+  else
+    print("No error pattern found on current line")
+  end
+end, { desc = "Jump to file:line:col under cursor" })
 
+-- Which Key helper - show available keybindings
+local function show_keymaps()
+  local maps = vim.api.nvim_get_keymap('n')
+  local leader_maps = {}
+
+  for _, map in ipairs(maps) do
+    if map.lhs:match('^<Leader>') or map.lhs:match('^ ') then
+      local desc = map.desc or map.rhs or ''
+      table.insert(leader_maps, string.format("  %s -> %s", map.lhs:gsub('<Leader>', 'SPC'), desc))
+    end
+  end
+
+  if #leader_maps > 0 then
+    vim.notify("Available Leader Keybindings:\n" .. table.concat(leader_maps, "\n"), vim.log.levels.INFO)
+  end
+end
+
+vim.api.nvim_create_user_command("WhichKey", show_keymaps, { desc = "Show leader keybindings" })
+keymap("n", "<leader>?", show_keymaps, { desc = "Show keybindings" })
+
+-- Useful autocommands
 -- Highlight on yank
 autocmd("TextYankPost", {
   group = augroup("HighlightYank", { clear = true }),
@@ -230,5 +332,121 @@ autocmd("BufReadPost", {
     end
   end,
 })
+
+-- Auto-readonly for common log files and system paths
+autocmd("BufRead", {
+  group = augroup("AutoReadonly", { clear = true }),
+  pattern = {
+    "/var/log/*",
+    "/etc/*",
+    "*.log",
+    "/sys/*",
+    "/proc/*"
+  },
+  callback = function()
+    vim.bo.readonly = true
+    vim.bo.modifiable = false
+  end,
+})
+
+-- Filetype-specific settings
+local filetype_group = augroup("FileTypeSettings", { clear = true })
+
+autocmd("FileType", {
+  group = filetype_group,
+  pattern = "python",
+  callback = function()
+    vim.bo.expandtab = true
+    vim.bo.shiftwidth = 4
+    vim.bo.tabstop = 4
+  end,
+})
+
+autocmd("FileType", {
+  group = filetype_group,
+  pattern = { "javascript", "typescript", "json", "yaml", "html", "css" },
+  callback = function()
+    vim.bo.expandtab = true
+    vim.bo.shiftwidth = 2
+    vim.bo.tabstop = 2
+  end,
+})
+
+autocmd("FileType", {
+  group = filetype_group,
+  pattern = "go",
+  callback = function()
+    vim.bo.expandtab = false
+    vim.bo.shiftwidth = 4
+    vim.bo.tabstop = 4
+  end,
+})
+
+autocmd("FileType", {
+  group = filetype_group,
+  pattern = "markdown",
+  callback = function()
+    vim.wo.wrap = true
+    vim.wo.linebreak = true
+  end,
+})
+
+-- Better diagnostics display
+vim.diagnostic.config({
+  virtual_text = {
+    prefix = '●',
+    spacing = 4,
+  },
+  signs = true,
+  underline = true,
+  update_in_insert = false,
+  severity_sort = true,
+  float = {
+    source = 'always',
+    border = 'rounded',
+  },
+})
+
+-- LSP setup (if available)
+autocmd("LspAttach", {
+  group = augroup("UserLspConfig", { clear = true }),
+  callback = function(ev)
+    local opts = { buffer = ev.buf }
+    keymap("n", "gd", vim.lsp.buf.definition, opts)
+    keymap("n", "K", vim.lsp.buf.hover, opts)
+    keymap("n", "<leader>rn", vim.lsp.buf.rename, opts)
+    keymap("n", "<leader>ca", vim.lsp.buf.code_action, opts)
+    keymap("n", "gr", vim.lsp.buf.references, opts)
+  end,
+})
+
+-- Native completion keybindings
+autocmd("InsertEnter", {
+  group = augroup("CompletionMaps", { clear = true }),
+  callback = function()
+    keymap("i", "<C-n>", "<C-x><C-n>", { buffer = true, desc = "Word completion" })
+    keymap("i", "<C-f>", "<C-x><C-f>", { buffer = true, desc = "File completion" })
+    keymap("i", "<C-l>", "<C-x><C-l>", { buffer = true, desc = "Line completion" })
+  end,
+})
+
+-- Snippet expansion (Neovim 0.10+)
+if vim.snippet then
+  keymap({ "i", "s" }, "<Tab>", function()
+    if vim.snippet.active({ direction = 1 }) then
+      return "<cmd>lua vim.snippet.jump(1)<CR>"
+    else
+      return "<Tab>"
+    end
+  end, { expr = true })
+
+  keymap({ "i", "s" }, "<S-Tab>", function()
+    if vim.snippet.active({ direction = -1 }) then
+      return "<cmd>lua vim.snippet.jump(-1)<CR>"
+    else
+      return "<S-Tab>"
+    end
+  end, { expr = true })
+end
 
 print("✓ Minivim loaded successfully!")
