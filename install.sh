@@ -62,7 +62,30 @@ cd /tmp
 NVIM_ARCHIVE="nvim-linux-x86_64.tar.gz"
 DOWNLOAD_URL="https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/${NVIM_ARCHIVE}"
 
-curl -fLO "${DOWNLOAD_URL}"
+echo -e "${GREEN}Downloading from: ${DOWNLOAD_URL}${NC}"
+
+# Try downloading with retries
+MAX_RETRIES=3
+RETRY_COUNT=0
+
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if curl -fLO "${DOWNLOAD_URL}"; then
+        echo -e "${GREEN}Download successful!${NC}"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo -e "${YELLOW}Download failed. Retrying in 5 seconds... (Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)${NC}"
+            sleep 5
+        else
+            echo -e "${RED}Download failed after $MAX_RETRIES attempts.${NC}"
+            echo -e "${RED}Please check your internet connection or try again later.${NC}"
+            echo -e "${YELLOW}You can also manually download from:${NC}"
+            echo -e "${YELLOW}${DOWNLOAD_URL}${NC}"
+            exit 1
+        fi
+    fi
+done
 
 # Extract and install
 tar xzf "${NVIM_ARCHIVE}"
@@ -88,18 +111,27 @@ install_central_config() {
     echo -e "${GREEN}Installing central configuration...${NC}"
 
     mkdir -p /etc/minivim
+    mkdir -p /etc/minivim/lua
 
-    # Try multiple locations for init.lua
-    local init_lua_paths=(
-        "$SCRIPT_DIR/init.lua"
-        "$ORIGINAL_DIR/init.lua"
+    # Try multiple locations for config files
+    local config_paths=(
+        "$SCRIPT_DIR"
+        "$ORIGINAL_DIR"
     )
 
     local found=0
-    for path in "${init_lua_paths[@]}"; do
-        if [ -f "$path" ]; then
-            cp "$path" "$CENTRAL_CONFIG"
+    for path in "${config_paths[@]}"; do
+        if [ -f "$path/init.lua" ]; then
+            # Copy main init.lua
+            cp "$path/init.lua" "$CENTRAL_CONFIG"
             chmod 644 "$CENTRAL_CONFIG"
+
+            # Copy all module files
+            if [ -d "$path/lua" ]; then
+                cp -r "$path/lua/"*.lua /etc/minivim/lua/
+                chmod -R 644 /etc/minivim/lua/*.lua
+            fi
+
             echo -e "${GREEN}Central configuration installed from: $path${NC}"
             found=1
             break
