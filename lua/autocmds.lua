@@ -98,6 +98,12 @@ function M.setup()
         return
       end
 
+      -- Skip if running as root (UID 0)
+      local uid = vim.fn.system("id -u"):gsub("%s+", "")
+      if uid == "0" then
+        return
+      end
+
       -- Only set readonly if file is not writable by current user
       local filepath = vim.fn.expand("%:p")
       if filepath ~= "" and vim.fn.filewritable(filepath) == 0 then
