@@ -28,7 +28,6 @@ function M.setup()
   vim.opt.colorcolumn = "120"              -- Guide line at 80 characters
   vim.opt.cursorline = true                -- Highlight current line
   vim.opt.mouse = "a"                      -- Enable mouse
-  vim.opt.clipboard = "unnamedplus"        -- Use system clipboard
   vim.opt.splitright = true                -- Vertical split to the right
   vim.opt.splitbelow = true                -- Horizontal split below
   vim.opt.helpheight = 20                  -- Help window height (prevents freezing)
@@ -59,6 +58,20 @@ function M.setup()
   vim.g.netrw_altv = 1             -- Open splits to the right
   vim.g.netrw_winsize = 25         -- 25% width
   vim.g.netrw_keepdir = 0          -- Keep current directory synced
+
+  -- OSC52 clipboard support for SSH (copy/paste between server and local machine)
+  vim.g.clipboard = {
+    name = 'OSC 52',
+    copy = {
+      ['+'] = require('vim.ui.clipboard.osc52').copy('+'),
+      ['*'] = require('vim.ui.clipboard.osc52').copy('*'),
+    },
+    paste = {
+      ['+'] = require('vim.ui.clipboard.osc52').paste('+'),
+      ['*'] = require('vim.ui.clipboard.osc52').paste('*'),
+    },
+  }
+  vim.opt.clipboard = "unnamedplus"
 end
 
 return M

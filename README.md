@@ -12,15 +12,15 @@ Minimalist Neovim configuration for servers
 - Works on any Linux distribution
 
 ### Enhanced
-- Native LSP support with autocomplete
+- Auto-triggered word completion
+- VSCode-like sidebar file explorer
+- SSH clipboard support (Ctrl+C copy)
 - Snippet expansion (Neovim 0.10+)
 - WhichKey helper (`<Space>?`)
 - File breadcrumbs in winbar
 - Auto-readonly for logs and system files
 - Jump to error from logs (`:JumpToError`)
 - Filetype-specific indentation
-- Better diagnostics display
-- Improved diff mode
 
 ## Installation
 
@@ -49,7 +49,8 @@ What it does:
 ### Navigation
 - `Ctrl+h/j/k/l` - Navigate between windows
 - `Shift+h/l` - Navigate between buffers
-- `<Space>e` - File explorer
+- `<Space>e` - Toggle file explorer sidebar
+- `<Space>E` - File explorer in current window
 
 ### Window Management
 - `<Space>v` - Vertical split
@@ -59,6 +60,7 @@ What it does:
 ### Editing
 - `Alt+j/k` - Move line up/down
 - `>` / `<` (visual mode) - Indent
+- `Ctrl+C` (visual mode) - Copy to clipboard (works via SSH)
 - `Esc` - Clear search highlight
 
 ### Terminal
@@ -68,16 +70,11 @@ What it does:
 ## Advanced Features
 
 ### Native Completion
+Word completion triggers automatically after typing 2+ characters. Manual triggers:
+- `Ctrl+Space` - Trigger word completion
 - `Ctrl+n` - Word completion
 - `Ctrl+f` - File path completion
 - `Ctrl+l` - Line completion
-
-### LSP (if language server installed)
-- `gd` - Go to definition
-- `K` - Hover documentation
-- `<Space>rn` - Rename
-- `<Space>ca` - Code action
-- `gr` - Find references
 
 ### Snippets (Neovim 0.10+)
 - `Tab` - Expand/jump forward
@@ -87,6 +84,7 @@ What it does:
 - `<Space>?` - Show all keybindings
 - `:JumpToError` - Jump to file:line from logs
 - `:WhichKey` - List available shortcuts
+- `:Config` - Edit central configuration
 
 ### Auto-readonly Files
 Logs and system files automatically open as readonly:

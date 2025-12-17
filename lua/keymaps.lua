@@ -34,6 +34,11 @@ function M.setup()
   keymap("v", "<", "<gv", { desc = "Indent left" })
   keymap("v", ">", ">gv", { desc = "Indent right" })
 
+  -- Clipboard operations (works via SSH with OSC52)
+  keymap("v", "<C-c>", '"+y', { desc = "Copy to system clipboard" })
+  keymap("v", "<C-x>", '"+d', { desc = "Cut to system clipboard" })
+  -- Use 'p' in normal mode or '"+p' to paste from system clipboard
+
   -- Keep centered when searching
   keymap("n", "n", "nzzzv", { desc = "Next result" })
   keymap("n", "N", "Nzzzv", { desc = "Previous result" })
@@ -70,34 +75,11 @@ function M.setup()
   keymap("n", "<leader>t", ":terminal<CR>", { desc = "Open terminal" })
   keymap("t", "<Esc>", "<C-\\><C-n>", { desc = "Exit terminal mode" })
 
-  -- LSP keybindings (attached when LSP is available)
-  local autocmd = vim.api.nvim_create_autocmd
-  local augroup = vim.api.nvim_create_augroup
-
-  autocmd("LspAttach", {
-    group = augroup("UserLspConfig", { clear = true }),
-    callback = function(ev)
-      local opts = { buffer = ev.buf }
-      keymap("n", "gd", vim.lsp.buf.definition, opts)
-      keymap("n", "K", vim.lsp.buf.hover, opts)
-      keymap("n", "<leader>rn", vim.lsp.buf.rename, opts)
-      keymap("n", "<leader>ca", vim.lsp.buf.code_action, opts)
-      keymap("n", "gr", vim.lsp.buf.references, opts)
-      keymap("n", "<leader>f", function()
-        vim.lsp.buf.format({ async = true })
-      end, opts)
-    end,
-  })
-
   -- Native completion keybindings (insert mode)
-  autocmd("InsertEnter", {
-    group = augroup("CompletionMaps", { clear = true }),
-    callback = function()
-      keymap("i", "<C-n>", "<C-x><C-n>", { buffer = true, desc = "Word completion" })
-      keymap("i", "<C-f>", "<C-x><C-f>", { buffer = true, desc = "File completion" })
-      keymap("i", "<C-l>", "<C-x><C-l>", { buffer = true, desc = "Line completion" })
-    end,
-  })
+  keymap("i", "<C-n>", "<C-x><C-n>", { desc = "Word completion" })
+  keymap("i", "<C-f>", "<C-x><C-f>", { desc = "File completion" })
+  keymap("i", "<C-l>", "<C-x><C-l>", { desc = "Line completion" })
+  keymap("i", "<C-Space>", "<C-x><C-n>", { desc = "Trigger word completion" })
 
   -- Snippet keybindings (if available in Neovim 0.10+)
   if vim.snippet then

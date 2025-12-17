@@ -155,11 +155,30 @@ function M.setup()
     end,
   })
 
-  -- Better diagnostics display
-  autocmd("CursorHold", {
-    group = augroup("ShowDiagnostics", { clear = true }),
+  -- Auto-trigger word completion while typing
+  autocmd("TextChangedI", {
+    group = augroup("AutoComplete", { clear = true }),
     callback = function()
-      vim.diagnostic.open_float(nil, { focus = false, scope = "cursor" })
+      -- Get current line and column
+      local line = vim.api.nvim_get_current_line()
+      local col = vim.api.nvim_win_get_cursor(0)[2]
+
+      -- Only trigger after typing 2+ consecutive alphanumeric characters
+      if col > 1 then
+        local char = line:sub(col, col)
+        local prev_char = line:sub(col-1, col-1)
+
+        -- Check if we're typing a word (2+ alphanumeric chars in a row)
+        if char:match('[%w_]') and prev_char:match('[%w_]') then
+          -- Small delay to avoid triggering too often
+          vim.defer_fn(function()
+            if vim.fn.pumvisible() == 0 then
+              -- Use word completion
+              vim.fn.feedkeys(vim.api.nvim_replace_termcodes('<C-x><C-n>', true, false, true), 'n')
+            end
+          end, 100)
+        end
+      end
     end,
   })
 end
